@@ -134,6 +134,46 @@ class PersonalListsClient:
         except Exception as e:
             logger.warning("Could not save storage state: %s", e)
 
+    def _is_session_error(self, status: int, text: str = "") -> bool:
+        """Return True if HTTP status or body indicates an expired/invalid session."""
+        if status in (401, 403):
+            return True
+        low = text.lower()
+        if "unauthorized" in low or "access denied" in low:
+            return True
+        if "security validation for this page is invalid" in low:
+            return True
+        if "login.live.com" in low or "login.srf" in low:
+            return True
+        return False
+
+    async def _prompt_login(self):
+        """Prompt user to sign in using an interactive browser window."""
+        print("\n" + "=" * 60)
+        print("Microsoft Lists: Login or session refresh required.")
+        print("Opening browser for you to sign in to your Microsoft Account...")
+        print("=" * 60 + "\n")
+        if self._context:
+            await self._context.close()
+
+        self._context = await self._playwright.chromium.launch_persistent_context(
+            user_data_dir=str(self.session_dir.resolve()),
+            headless=False,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        self._page = await self._context.new_page()
+        await self._page.goto(self.list_url, wait_until="load")
+
+        print("Waiting for login to complete... (navigate to list)")
+        await self._page.wait_for_url(
+            lambda url: "lists.live.com" in url and "login.live.com" not in url,
+            timeout=300000,
+        )
+        await self._page.wait_for_timeout(3000)
+        await self._save_storage_state()
+        await self._init_session_tokens()
+        print("Successfully authenticated and session saved!\n")
+
     async def __aenter__(self) -> "PersonalListsClient":
         try:
             from playwright.async_api import async_playwright
@@ -149,7 +189,7 @@ class PersonalListsClient:
         if self.force_login:
             if self.state_file.exists():
                 self.state_file.unlink(missing_ok=True)
-            is_authed = False
+            await self._prompt_login()
         else:
             self._context = await self._playwright.chromium.launch_persistent_context(
                 user_data_dir=str(self.session_dir.resolve()),
@@ -177,33 +217,11 @@ class PersonalListsClient:
                 except Exception:
                     is_authed = False
 
-        if not is_authed:
-            print("\n" + "=" * 60)
-            print("Microsoft Lists: Login required.")
-            print("Opening browser for you to sign in to your Microsoft Account...")
-            print("=" * 60 + "\n")
-            if self._context:
-                await self._context.close()
+            if not is_authed:
+                await self._prompt_login()
+            else:
+                await self._init_session_tokens()
 
-            self._context = await self._playwright.chromium.launch_persistent_context(
-                user_data_dir=str(self.session_dir.resolve()),
-                headless=False,
-                args=["--disable-blink-features=AutomationControlled"],
-            )
-            await self._restore_storage_state()
-            self._page = await self._context.new_page()
-            await self._page.goto(self.list_url, wait_until="load")
-
-            print("Waiting for login to complete... (navigate to list)")
-            await self._page.wait_for_url(
-                lambda url: "lists.live.com" in url and "login.live.com" not in url,
-                timeout=300000,
-            )
-            await self._page.wait_for_timeout(3000)
-            await self._save_storage_state()
-            print("Successfully authenticated and session saved!\n")
-
-        await self._init_session_tokens()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -220,39 +238,30 @@ class PersonalListsClient:
                 f"{self.api_list}?$select=Id,Title",
                 headers={"Accept": "application/json;odata=nometadata"},
             )
-            return resp.status == 200
+            if resp.status != 200:
+                return False
+            text = await resp.text()
+            return not self._is_session_error(resp.status, text)
         except Exception:
             return False
 
-    async def _init_session_tokens(self):
+    async def _init_session_tokens(self) -> bool:
         """Fetch X-RequestDigest form token for write operations."""
-        resp = await self._page.request.post(
-            f"{self.base_site}/_api/contextinfo",
-            headers={"Accept": "application/json;odata=nometadata"},
-        )
-        if resp.status == 200:
-            data = await resp.json()
-            self._request_digest = data.get("FormDigestValue")
-        else:
-            logger.warning("Failed to obtain FormDigestValue: %s", resp.status)
-
-    async def resolve_fields(self) -> dict[str, str]:
-        """Fetch list field definitions and map display names to internal names."""
-        if self._field_map:
-            return self._field_map
-
-        resp = await self._page.request.get(
-            f"{self.api_list}/Fields?$select=Title,InternalName,EntityPropertyName,TypeAsString,Hidden",
-            headers={"Accept": "application/json;odata=nometadata"},
-        )
-        if resp.status != 200:
-            text = await resp.text()
-            raise RuntimeError(f"Failed to fetch fields (HTTP {resp.status}): {text}")
-
-        data = await resp.json()
-        self._field_map = normalize_field_map(data.get("value", []))
-        logger.info("Resolved list fields: %s", self._field_map)
-        return self._field_map
+        try:
+            resp = await self._page.request.post(
+                f"{self.base_site}/_api/contextinfo",
+                headers={"Accept": "application/json;odata=nometadata"},
+            )
+            if resp.status == 200:
+                data = await resp.json()
+                self._request_digest = data.get("FormDigestValue")
+                return True
+            else:
+                logger.warning("Failed to obtain FormDigestValue: %s", resp.status)
+                return False
+        except Exception as e:
+            logger.warning("Error fetching FormDigestValue: %s", e)
+            return False
 
     def _get_headers(self, merge: bool = False) -> dict[str, str]:
         headers = {
@@ -266,6 +275,62 @@ class PersonalListsClient:
             headers["If-Match"] = "*"
         return headers
 
+    async def _send_request(
+        self,
+        method: str,
+        url: str,
+        headers: dict[str, str] | None = None,
+        data: Any = None,
+    ) -> tuple[Any, str]:
+        """Send an API request, prompting for re-login and retrying once if session error occurs."""
+        if not self._request_digest and method.upper() == "POST":
+            await self._init_session_tokens()
+
+        req_headers = dict(headers or {})
+        resp = await self._page.request.fetch(
+            url,
+            method=method,
+            headers=req_headers,
+            data=data,
+        )
+        text = await resp.text()
+
+        if self._is_session_error(resp.status, text):
+            logger.warning("Session error (HTTP %s). Triggering re-login...", resp.status)
+            await self._prompt_login()
+            if method.upper() == "POST":
+                is_merge = req_headers.get("X-HTTP-Method") == "MERGE"
+                req_headers = self._get_headers(merge=is_merge)
+            resp = await self._page.request.fetch(
+                url,
+                method=method,
+                headers=req_headers,
+                data=data,
+            )
+            text = await resp.text()
+
+        return resp, text
+
+    async def resolve_fields(self) -> dict[str, str]:
+        """Fetch list field definitions and map display names to internal names."""
+        if self._field_map:
+            return self._field_map
+
+        fields_query = "$select=Title,InternalName,EntityPropertyName,TypeAsString,Hidden"
+        url = f"{self.api_list}/Fields?{fields_query}"
+        resp, text = await self._send_request(
+            "GET",
+            url,
+            headers={"Accept": "application/json;odata=nometadata"},
+        )
+        if resp.status != 200:
+            raise RuntimeError(f"Failed to fetch fields (HTTP {resp.status}): {text}")
+
+        data = json.loads(text)
+        self._field_map = normalize_field_map(data.get("value", []))
+        logger.info("Resolved list fields: %s", self._field_map)
+        return self._field_map
+
     async def find_item_by_cnr(self, cnr: str) -> dict[str, Any] | None:
         """Find an existing list item matching the CNR number."""
         fields = await self.resolve_fields()
@@ -274,37 +339,38 @@ class PersonalListsClient:
         )
 
         query_url = f"{self.api_list}/items?$filter={cnr_field} eq '{cnr}'&$top=1"
-        resp = await self._page.request.get(
+        resp, text = await self._send_request(
+            "GET",
             query_url,
             headers={"Accept": "application/json;odata=nometadata"},
         )
         if resp.status == 200:
-            data = await resp.json()
+            data = json.loads(text)
             items = data.get("value", [])
             return items[0] if items else None
         return None
 
     async def add_item(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Create a new item in the Microsoft List."""
-        resp = await self._page.request.post(
+        resp, text = await self._send_request(
+            "POST",
             f"{self.api_list}/items",
             headers=self._get_headers(),
             data=payload,
         )
         if resp.status not in (200, 201):
-            text = await resp.text()
             raise RuntimeError(f"Failed to create list item (HTTP {resp.status}): {text}")
-        return await resp.json()
+        return json.loads(text)
 
     async def update_item(self, item_id: int, payload: dict[str, Any]):
         """Update an existing item in the Microsoft List."""
-        resp = await self._page.request.post(
+        resp, text = await self._send_request(
+            "POST",
             f"{self.api_list}/items({item_id})",
             headers=self._get_headers(merge=True),
             data=payload,
         )
         if resp.status not in (200, 204):
-            text = await resp.text()
             raise RuntimeError(f"Failed to update list item {item_id} (HTTP {resp.status}): {text}")
 
     async def upsert_hearing(

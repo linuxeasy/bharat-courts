@@ -101,3 +101,8 @@ def test_personal_lists_client_init():
     assert client.list_guid == "2448d690-8f6a-4d75-af37-cc138991094e"
     assert client.user_id == "f5b969a95d74bb55"
     assert client.state_file.name == "storage_state.json"
+    assert client._is_session_error(401) is True
+    assert client._is_session_error(403) is True
+    assert client._is_session_error(200, "Unauthorized error") is True
+    assert client._is_session_error(200, "Redirect to login.live.com") is True
+    assert client._is_session_error(200, "Success") is False
