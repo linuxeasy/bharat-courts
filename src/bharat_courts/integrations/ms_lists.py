@@ -335,15 +335,14 @@ class PersonalListsClient:
         )
         k_court = lookup_field(field_map, ["court", "court name", "complex"], "Court")
 
-        # Format date as ISO string (SharePoint expects YYYY-MM-DDTHH:MM:SSZ or null)
+        # Format date as YYYY-MM-DD date-only string
         date_str: str | None = None
         if next_hearing_date:
-            if isinstance(next_hearing_date, datetime):
-                date_str = next_hearing_date.strftime("%Y-%m-%dT00:00:00Z")
-            elif isinstance(next_hearing_date, date):
-                date_str = f"{next_hearing_date.isoformat()}T00:00:00Z"
+            if isinstance(next_hearing_date, (datetime, date)):
+                date_str = next_hearing_date.strftime("%Y-%m-%d")
             else:
-                date_str = str(next_hearing_date)
+                s = str(next_hearing_date).strip()
+                date_str = s[:10] if len(s) >= 10 and s[4] == "-" else s
 
         payload = {
             k_parties: parties,
