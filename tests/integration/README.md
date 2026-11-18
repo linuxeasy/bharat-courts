@@ -90,7 +90,7 @@ monitored live.
 | `DistrictCourtClient.list_states` + `DISTRICT_STATES` drift | districtcourts · States |
 | `list_districts` / `list_complexes` / `parse_complex_value` / `list_establishments` / `list_case_types` | districtcourts · cascade checks; cli |
 | `list_cause_list_courts` / `cause_list` | districtcourts · Cause-list courts + cause list |
-| `DistrictCourtClient.case_status_by_party` | districtcourts · Case status by party |
+| `DistrictCourtClient.case_status_by_party` / `case_status_by_advocate_name` | districtcourts · Case status by party / advocate |
 | `DistrictCourtClient.case_status_by_cnr` → `CaseDetail` | districtcourts · Case detail by CNR |
 | `DistrictCourtClient.court_orders` | districtcourts · Court orders |
 | `JudgmentSearchClient.search` (HC and SCR), `search_all`, `download_pdf` (two rows must differ — `val` indexing) | judgments |

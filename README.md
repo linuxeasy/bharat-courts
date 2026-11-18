@@ -725,6 +725,21 @@ cases = await client.case_status_by_party(
 )
 ```
 
+##### `case_status_by_advocate_name(*, state_code, dist_code, court_complex_code, est_code="", advocate_name, status_filter="Both") -> list[CaseInfo]`
+
+Search by advocate name (min 3 characters).
+
+```python
+cases = await client.case_status_by_advocate_name(
+    state_code="8",
+    dist_code="1",
+    court_complex_code="1080010",
+    est_code="2",
+    advocate_name="sharma",
+    status_filter="Pending",  # "Pending", "Disposed", or "Both"
+)
+```
+
 ##### `court_orders(*, state_code, dist_code, court_complex_code, est_code, case_type, case_number, year) -> list[CaseOrder]`
 
 Get court orders for a case.

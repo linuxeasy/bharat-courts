@@ -335,6 +335,29 @@ def case_status_by_party_form(
     }
 
 
+def case_status_by_advocate_name_form(
+    *,
+    state_code: str,
+    dist_code: str,
+    court_complex_code: str,
+    est_code: str = "",
+    advocate_name: str,
+    status_filter: str = "Both",
+    captcha: str,
+) -> dict[str, str]:
+    """Form data for case status search by advocate name."""
+    return {
+        "radAdvt": "1",
+        "advocate_name": advocate_name,
+        "case_status": status_filter,
+        "adv_captcha_code": captcha,
+        "state_code": state_code,
+        "dist_code": dist_code,
+        "court_complex_code": court_complex_code,
+        "est_code": est_code,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Court orders forms
 # ---------------------------------------------------------------------------

@@ -59,6 +59,7 @@ LAST_YEAR = str(date.today().year - 1)
 # Specific parties, not generic words: an over-broad term matches tens of
 # thousands of rows and the portal times out generating them.
 PARTIES = ["Union of India", "State Bank of India", "Insurance Company"]
+ADVOCATES = ["Sharma", "Kumar", "Singh"]
 shared: dict = {}
 
 
@@ -284,6 +285,50 @@ async def check_party(c: Check) -> None:
     assert first.case_number, "row missing case number"
     shared.update(cases=rows, case_complex=code, case_est=est)
     suite.save_json("case_status_party", [r.to_dict(exclude_none=True) for r in rows[:10]])
+    c.passed = True
+
+
+@suite.check(
+    "Case status by advocate (rotating complex)",
+    "DistrictCourtClient.case_status_by_advocate_name",
+)
+async def check_advocate(c: Check) -> None:
+    state, dist = _loc()
+    top = shared.get("complexes", [])[:2]
+    candidates = [(cx, adv) for cx in top for adv in ADVOCATES]
+    async with _client() as client:
+
+        async def run(cand):
+            (code, ests, needs, _name), adv = cand
+            est = (
+                shared.get("est") if code == shared.get("complex") else (ests[0] if needs else "")
+            ) or ""
+            rows = await client.case_status_by_advocate_name(
+                state_code=state,
+                dist_code=dist,
+                court_complex_code=code,
+                est_code=est,
+                advocate_name=adv,
+            )
+            return (code, est, rows)
+
+        hit, value = await first_working(
+            c,
+            candidates,
+            run,
+            label="rows",
+            key=lambda t: f"{t[0][3][:25]} / {t[1]}",
+            accept=lambda v: bool(v[2]),
+        )
+    assert value is not None, "no advocate search returned rows on any complex"
+    code, est, rows = value
+    first = rows[0]
+    c.details["found"] = len(rows)
+    c.details["first"] = (
+        f"{first.case_number} {first.cnr_number} — "
+        f"{first.petitioner[:30]} vs {first.respondent[:30]}"
+    )
+    assert first.case_number, "row missing case number"
     c.passed = True
 
 

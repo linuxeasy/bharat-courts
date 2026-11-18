@@ -881,6 +881,58 @@ def dc_search_by_party(
             click.echo(f"  Status: {case.status}")
 
 
+@districtcourts.command("search-by-advocate")
+@click.option("--state", "state_code", required=True)
+@click.option("--dist", "dist_code", required=True)
+@click.option("--complex", "complex_code", required=True)
+@click.option("--est", "est_code", default="")
+@click.option("--advocate", "advocate_name", required=True)
+@click.option(
+    "--status",
+    type=click.Choice(["pending", "disposed", "both"]),
+    default="both",
+)
+@click.pass_context
+def dc_search_by_advocate(
+    ctx: click.Context,
+    state_code: str,
+    dist_code: str,
+    complex_code: str,
+    est_code: str,
+    advocate_name: str,
+    status: str,
+):
+    """Search district courts by advocate name."""
+    status_filter = {"pending": "Pending", "disposed": "Disposed", "both": "Both"}[status]
+
+    async def _go():
+        from bharat_courts.districtcourts.client import DistrictCourtClient
+
+        async with DistrictCourtClient() as client:
+            return await client.case_status_by_advocate_name(
+                state_code=state_code,
+                dist_code=dist_code,
+                court_complex_code=complex_code,
+                est_code=est_code,
+                advocate_name=advocate_name,
+                status_filter=status_filter,
+            )
+
+    results = _run(_go())
+    if _is_json(ctx):
+        _emit_json([c.to_dict(exclude_none=True) for c in results])
+        return
+    if not results:
+        click.echo("No results found.")
+        return
+    for case in results:
+        click.echo(f"\n{case.case_number}")
+        if case.petitioner or case.respondent:
+            click.echo(f"  {case.petitioner} vs {case.respondent}")
+        if case.status:
+            click.echo(f"  Status: {case.status}")
+
+
 @districtcourts.command("orders")
 @click.option("--state", "state_code", required=True)
 @click.option("--dist", "dist_code", required=True)

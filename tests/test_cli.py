@@ -305,6 +305,85 @@ def test_districtcourts_complexes(monkeypatch):
     assert "District Court Patna" in result.output
 
 
+def test_districtcourts_search_by_advocate_human(monkeypatch):
+    fake = [
+        CaseInfo(
+            case_number="CS/123/2024",
+            case_type="CS",
+            petitioner="Ram Kumar Singh",
+            respondent="Shyam Lal",
+            status="Pending",
+        )
+    ]
+    _patch_async_method(
+        monkeypatch,
+        "bharat_courts.districtcourts.client.DistrictCourtClient",
+        "case_status_by_advocate_name",
+        fake,
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "districtcourts",
+            "search-by-advocate",
+            "--state",
+            "8",
+            "--dist",
+            "1",
+            "--complex",
+            "1080010",
+            "--advocate",
+            "Sharma",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "CS/123/2024" in result.output
+    assert "Ram Kumar Singh vs Shyam Lal" in result.output
+    assert "Status: Pending" in result.output
+
+
+def test_districtcourts_search_by_advocate_json(monkeypatch):
+    fake = [
+        CaseInfo(
+            case_number="CS/123/2024",
+            case_type="CS",
+            cnr_number="BHAR010001232024",
+            petitioner="Ram Kumar Singh",
+            respondent="Shyam Lal",
+            status="Pending",
+        )
+    ]
+    _patch_async_method(
+        monkeypatch,
+        "bharat_courts.districtcourts.client.DistrictCourtClient",
+        "case_status_by_advocate_name",
+        fake,
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "--json",
+            "districtcourts",
+            "search-by-advocate",
+            "--state",
+            "8",
+            "--dist",
+            "1",
+            "--complex",
+            "1080010",
+            "--advocate",
+            "Sharma",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert isinstance(data, list)
+    assert data[0]["case_number"] == "CS/123/2024"
+    assert data[0]["cnr_number"] == "BHAR010001232024"
+
+
 # ---------------------------------------------------------------------------
 # calcuttahc group
 # ---------------------------------------------------------------------------

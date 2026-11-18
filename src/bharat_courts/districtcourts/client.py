@@ -635,6 +635,55 @@ class DistrictCourtClient:
         html = result.get("party_data", "")
         return parse_case_status_html(html)
 
+    async def case_status_by_advocate_name(
+        self,
+        *,
+        state_code: str,
+        dist_code: str,
+        court_complex_code: str,
+        est_code: str = "",
+        advocate_name: str,
+        status_filter: str = "Both",
+    ) -> list[CaseInfo]:
+        """Search cases by advocate name.
+
+        Args:
+            state_code: State code.
+            dist_code: District code.
+            court_complex_code: Court complex code.
+            est_code: Establishment code (if needed).
+            advocate_name: Advocate name (min 3 chars).
+            status_filter: "Pending", "Disposed", or "Both".
+
+        Returns:
+            List of matching CaseInfo objects.
+        """
+        court_complex_code = self._bare_complex_code(court_complex_code)
+
+        def build_form(captcha: str) -> dict:
+            return endpoints.case_status_by_advocate_name_form(
+                state_code=state_code,
+                dist_code=dist_code,
+                court_complex_code=court_complex_code,
+                est_code=est_code,
+                advocate_name=advocate_name,
+                status_filter=status_filter,
+                captcha=captcha,
+            )
+
+        result = await self._post_with_captcha_retry(
+            "casestatus/submitAdvName",
+            build_form,
+            state_code=state_code,
+            dist_code=dist_code,
+            court_complex_code=court_complex_code,
+            est_code=est_code,
+        )
+        html = result.get("adv_data") or result.get("case_data") or result.get("party_data") or ""
+        return parse_case_status_html(html)
+
+    case_status_by_advocate = case_status_by_advocate_name
+
     # ------------------------------------------------------------------
     # Court orders
     # ------------------------------------------------------------------

@@ -418,6 +418,7 @@ All search methods require `state_code`, `dist_code`, `court_complex_code`, and 
 | `list_case_types(state_code, dist_code, complex_code, est_code="")` | No | `dict[str, str]` | Case type codes |
 | `case_status(*, state_code, dist_code, court_complex_code, est_code="", case_type, case_number, year)` | Yes | `list[CaseInfo]` | Search by case number |
 | `case_status_by_party(*, state_code, dist_code, court_complex_code, est_code="", party_name, year, status_filter="Both")` | Yes | `list[CaseInfo]` | Search by party name |
+| `case_status_by_advocate_name(*, state_code, dist_code, court_complex_code, est_code="", advocate_name, status_filter="Both")` | Yes | `list[CaseInfo]` | Search by advocate name |
 | `court_orders(*, state_code, dist_code, court_complex_code, est_code="", case_type, case_number, year)` | Yes | `list[CaseOrder]` | Get orders for a case |
 | `cause_list(*, state_code, dist_code, court_complex_code, est_code="", court_no="", causelist_date="", civil=True)` | Yes | `list[CauseListEntry]` | Cause list entries |
 

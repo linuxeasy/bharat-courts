@@ -41,6 +41,14 @@ def test_parse_ajax_response_success():
     assert result["party_data"] == "<table></table>"
 
 
+def test_parse_ajax_response_adv_data():
+    raw = '{"status": 1, "app_token": "abc123", "adv_data": "<table></table>"}'
+    result = parse_ajax_response(raw)
+    assert result["status"] == 1
+    assert result["app_token"] == "abc123"
+    assert result["adv_data"] == "<table></table>"
+
+
 def test_parse_ajax_response_captcha_error():
     raw = '{"status": 0, "app_token": "xyz", "div_captcha": "<img...>"}'
     with pytest.raises(CaptchaError):

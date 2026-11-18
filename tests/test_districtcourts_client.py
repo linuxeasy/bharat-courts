@@ -9,6 +9,7 @@ from httpx import Response
 
 from bharat_courts.captcha.base import CaptchaSolver
 from bharat_courts.config import BharatCourtsConfig
+from bharat_courts.districtcourts import endpoints
 from bharat_courts.districtcourts.client import DistrictCourtClient
 from bharat_courts.districtcourts.endpoints import BASE_URL, CAPTCHA_IMAGE_URL
 
@@ -148,6 +149,79 @@ async def test_case_status_by_party(fast_config, captcha_solver):
 
     assert len(results) == 3
     assert results[0].petitioner == "Ram Kumar Singh"
+
+
+@pytest.mark.asyncio
+async def test_case_status_by_advocate_name(fast_config, captcha_solver):
+    case_html = (FIXTURES_DIR / "districtcourts_case_status.html").read_text()
+
+    with respx.mock:
+        _mock_session_init()
+        respx.post(url__regex=r".*getCaptcha").mock(
+            return_value=_ajax_response(div_captcha="<img>")
+        )
+        respx.post(url__regex=r".*set_data").mock(return_value=_ajax_response())
+        respx.post(url__regex=r".*submitAdvName").mock(
+            return_value=_ajax_response(adv_data=case_html)
+        )
+
+        async with DistrictCourtClient(config=fast_config, captcha_solver=captcha_solver) as client:
+            results = await client.case_status_by_advocate_name(
+                state_code="8",
+                dist_code="1",
+                court_complex_code="1080010",
+                advocate_name="Sharma",
+            )
+
+    assert len(results) == 3
+    assert results[0].petitioner == "Ram Kumar Singh"
+
+
+@pytest.mark.asyncio
+async def test_case_status_by_advocate_name_case_data_fallback(fast_config, captcha_solver):
+    case_html = (FIXTURES_DIR / "districtcourts_case_status.html").read_text()
+
+    with respx.mock:
+        _mock_session_init()
+        respx.post(url__regex=r".*getCaptcha").mock(
+            return_value=_ajax_response(div_captcha="<img>")
+        )
+        respx.post(url__regex=r".*set_data").mock(return_value=_ajax_response())
+        respx.post(url__regex=r".*submitAdvName").mock(
+            return_value=_ajax_response(case_data=case_html)
+        )
+
+        async with DistrictCourtClient(config=fast_config, captcha_solver=captcha_solver) as client:
+            results = await client.case_status_by_advocate_name(
+                state_code="8",
+                dist_code="1",
+                court_complex_code="1080010",
+                advocate_name="Sharma",
+            )
+
+    assert len(results) == 3
+    assert results[0].petitioner == "Ram Kumar Singh"
+
+
+def test_case_status_by_advocate_name_form():
+    form = endpoints.case_status_by_advocate_name_form(
+        state_code="8",
+        dist_code="1",
+        court_complex_code="1080010",
+        est_code="2",
+        advocate_name="Sharma",
+        status_filter="Pending",
+        captcha="test1",
+    )
+    assert form["advocate_name"] == "Sharma"
+    assert "rgyearP" not in form
+    assert form["case_status"] == "Pending"
+    assert form["adv_captcha_code"] == "test1"
+    assert form["state_code"] == "8"
+    assert form["dist_code"] == "1"
+    assert form["court_complex_code"] == "1080010"
+    assert form["est_code"] == "2"
+    assert form["radAdvt"] in (1, "1")
 
 
 @pytest.mark.asyncio
@@ -799,6 +873,41 @@ async def test_full_dropdown_complex_value_is_normalised(fast_config, captcha_so
                 court_complex_code="1260008@5,6,7@N",
                 party_name="Bank",
                 year="2023",
+            )
+
+    assert len(results) == 3
+    submit_body = submit.calls.last.request.content.decode()
+    assert (
+        "court_complex_code=1260008&" in submit_body
+        or submit_body.endswith("court_complex_code=1260008")
+        or "court_complex_code=1260008" in submit_body
+    )
+    assert "%405%2C6%2C7%40N" not in submit_body, "@-suffix must not reach the wire"
+    set_body = set_data.calls.last.request.content.decode()
+    assert "court_complex_code=1260008" in set_body
+    assert "%40" not in set_body.split("court_complex_code=")[1].split("&")[0]
+
+
+@pytest.mark.asyncio
+async def test_case_status_by_advocate_name_normalises_complex_code(fast_config, captcha_solver):
+    case_html = (FIXTURES_DIR / "districtcourts_case_status.html").read_text()
+
+    with respx.mock:
+        _mock_session_init()
+        respx.post(url__regex=r".*getCaptcha").mock(
+            return_value=_ajax_response(div_captcha="<img>")
+        )
+        set_data = respx.post(url__regex=r".*set_data").mock(return_value=_ajax_response())
+        submit = respx.post(url__regex=r".*submitAdvName").mock(
+            return_value=_ajax_response(adv_data=case_html)
+        )
+
+        async with DistrictCourtClient(config=fast_config, captcha_solver=captcha_solver) as client:
+            results = await client.case_status_by_advocate_name(
+                state_code="26",
+                dist_code="8",
+                court_complex_code="1260008@5,6,7@N",
+                advocate_name="Sharma",
             )
 
     assert len(results) == 3

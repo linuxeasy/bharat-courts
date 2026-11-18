@@ -78,13 +78,14 @@ keyword-only (`*`) — pass them by name.
 | `list_case_types(state_code, dist_code, court_complex_code, est_code="")` | No | `dict[str, str]` | Case type codes; keys are compound `"<case_type>^<est_code>"` |
 | `case_status(*, state_code, dist_code, court_complex_code, est_code="", case_type, case_number, year)` | Yes | `list[CaseInfo]` | Search by case number |
 | `case_status_by_party(*, state_code, dist_code, court_complex_code, est_code="", party_name, year, status_filter="Both")` | Yes | `list[CaseInfo]` | Search by party name |
+| `case_status_by_advocate_name(*, state_code, dist_code, court_complex_code, est_code="", advocate_name, status_filter="Both")` | Yes | `list[CaseInfo]` | Search by advocate name |
 | `court_orders(*, state_code, dist_code, court_complex_code, est_code="", case_type, case_number, year)` | Yes | `list[CaseOrder]` | Orders for a case |
 | `cause_list(*, state_code, dist_code, court_complex_code, est_code="", court_no, court_name="", causelist_date="", civil=True)` | Yes | `list[CauseListEntry]` | Cause-list entries for a court |
 | `list_cause_list_courts(state_code, dist_code, court_complex_code, est_code="")` | No | `dict[str, str]` | Courts dropdown for cause-list lookup |
 
 !!! tip "Helpful defaults"
     - `year` is **mandatory** for `case_status_by_party` (the server rejects an
-      empty year), and `party_name` must be at least 3 characters.
+      empty year). `party_name` and `advocate_name` must be at least 3 characters.
     - `status_filter` accepts `"Pending"`, `"Disposed"`, or `"Both"` (default).
     - `cause_list` takes a `court_no` (the option *value* from
       `list_cause_list_courts`) and a `court_name`. If you leave `court_name`
