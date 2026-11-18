@@ -384,6 +384,84 @@ def test_districtcourts_search_by_advocate_json(monkeypatch):
     assert data[0]["cnr_number"] == "BHAR010001232024"
 
 
+def test_dc_sync_lists_help():
+    runner = CliRunner()
+    result = runner.invoke(main, ["districtcourts", "sync-lists", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "--list-url" in result.output
+    assert "--advocate" in result.output
+    assert "--state" in result.output
+    assert "--force-login" in result.output
+
+
+def test_dc_sync_lists_execution(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from bharat_courts.casedetail import CaseDetail
+
+    fake_cases = [
+        CaseInfo(
+            case_number="CS/123/2024",
+            case_type="CS",
+            cnr_number="BHAR010001232024",
+            petitioner="Ram Kumar Singh",
+            respondent="Shyam Lal",
+            status="Pending",
+        )
+    ]
+    fake_detail = CaseDetail(
+        cnr_number="BHAR010001232024",
+        next_hearing_date=date(2026, 12, 1),
+    )
+
+    _patch_async_method(
+        monkeypatch,
+        "bharat_courts.districtcourts.client.DistrictCourtClient",
+        "case_status_by_advocate_name",
+        fake_cases,
+    )
+    _patch_async_method(
+        monkeypatch,
+        "bharat_courts.districtcourts.client.DistrictCourtClient",
+        "case_status_by_cnr",
+        fake_detail,
+    )
+
+    mock_lists = AsyncMock()
+    mock_lists.__aenter__.return_value = mock_lists
+    mock_lists.__aexit__.return_value = None
+    mock_lists.upsert_hearing.return_value = "created"
+    monkeypatch.setattr(
+        "bharat_courts.integrations.ms_lists.PersonalListsClient",
+        lambda *args, **kwargs: mock_lists,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "--json",
+            "districtcourts",
+            "sync-lists",
+            "--list-url",
+            "https://lists.live.com/?listId=2448d6908f6a4d75af37cc138991094e%5Ff5b969a95d74bb55",
+            "--state",
+            "8",
+            "--dist",
+            "1",
+            "--complex",
+            "1080010",
+            "--advocate",
+            "Sharma",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert len(data) == 1
+    assert data[0]["sync_status"] == "created"
+    assert data[0]["next_hearing_date"] == "2026-12-01"
+
+
 # ---------------------------------------------------------------------------
 # calcuttahc group
 # ---------------------------------------------------------------------------

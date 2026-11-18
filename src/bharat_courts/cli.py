@@ -1077,6 +1077,101 @@ def dc_cause_list(
             click.echo(f"  Judge: {entry.judge}")
 
 
+@districtcourts.command("sync-lists")
+@click.option(
+    "--list-url",
+    required=True,
+    envvar="BHARAT_COURTS_MS_LISTS_URL",
+    help="Microsoft Lists URL.",
+)
+@click.option("--state", "state_code", required=True, help="State code.")
+@click.option("--dist", "dist_code", required=True, help="District code.")
+@click.option("--complex", "complex_code", required=True, help="Court complex code.")
+@click.option("--est", "est_code", default="", help="Establishment code (optional).")
+@click.option("--court-name", default="District Court", help="Court complex display name.")
+@click.option("--advocate", "advocate_name", required=True, help="Advocate name to search.")
+@click.option(
+    "--status",
+    type=click.Choice(["pending", "disposed", "both"]),
+    default="pending",
+    help="Filter by case status (default: pending).",
+)
+@click.option(
+    "--force-login",
+    is_flag=True,
+    default=False,
+    help="Force interactive browser login to refresh session.",
+)
+@click.pass_context
+def dc_sync_lists(
+    ctx: click.Context,
+    list_url: str,
+    state_code: str,
+    dist_code: str,
+    complex_code: str,
+    est_code: str,
+    court_name: str,
+    advocate_name: str,
+    status: str,
+    force_login: bool,
+):
+    """Search district court cases by advocate and sync next hearing dates to Microsoft Lists."""
+    from bharat_courts.districtcourts.client import DistrictCourtClient
+    from bharat_courts.integrations.ms_lists import PersonalListsClient
+
+    status_filter = {"pending": "Pending", "disposed": "Disposed", "both": "Both"}[status]
+
+    async def _go():
+        synced_records = []
+        async with PersonalListsClient(list_url=list_url, force_login=force_login) as lists_client:
+            async with DistrictCourtClient() as client:
+                cases = await client.case_status_by_advocate_name(
+                    state_code=state_code,
+                    dist_code=dist_code,
+                    court_complex_code=complex_code,
+                    est_code=est_code,
+                    advocate_name=advocate_name,
+                    status_filter=status_filter,
+                )
+                if not _is_json(ctx):
+                    click.echo(f"Found {len(cases)} case(s) for advocate '{advocate_name}'")
+
+                for c in cases:
+                    detail = await client.case_status_by_cnr(c.cnr_number)
+                    parties = (
+                        f"{c.petitioner} vs {c.respondent}"
+                        if (c.petitioner or c.respondent)
+                        else (c.case_number or "Unknown")
+                    )
+                    res = await lists_client.upsert_hearing(
+                        cnr=c.cnr_number,
+                        case_no=c.case_number,
+                        parties=parties,
+                        next_hearing_date=detail.next_hearing_date,
+                        court_name=court_name,
+                    )
+                    rec = {
+                        "case_number": c.case_number,
+                        "cnr_number": c.cnr_number,
+                        "parties": parties,
+                        "next_hearing_date": (
+                            str(detail.next_hearing_date) if detail.next_hearing_date else None
+                        ),
+                        "sync_status": res,
+                    }
+                    synced_records.append(rec)
+                    if not _is_json(ctx):
+                        click.echo(
+                            f"[{res.upper()}] {c.case_number} ({c.cnr_number}) — "
+                            f"Next hearing: {detail.next_hearing_date}"
+                        )
+        return synced_records
+
+    records = _run(_go())
+    if _is_json(ctx):
+        _emit_json(records)
+
+
 # ---------------------------------------------------------------------------
 # calcuttahc group
 # ---------------------------------------------------------------------------

@@ -32,6 +32,7 @@ Thumbs.db
 # Playwright
 .playwright/
 .playwright-cli/
+.ms_lists_session/
 
 # Temporary
 *.png
