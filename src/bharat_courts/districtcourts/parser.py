@@ -265,11 +265,11 @@ def _extract_cnr(row: Tag) -> str:
             # Also check aria-label for embedded data
             continue
         # viewHistory pattern: second argument is CNR (quoted)
-        cnr_match = re.search(r"'([A-Z]{4}\d{12,})'", onclick)
+        cnr_match = re.search(r"'([A-Z0-9]{6}\d{10,})'", onclick)
         if cnr_match:
             return cnr_match.group(1)
         # viewHistory pattern: second argument is CNR (unquoted comma-sep)
-        vh_match = re.search(r"viewHistory\([^,]+,'([A-Z]{4}\d{12,})'", onclick)
+        vh_match = re.search(r"viewHistory\([^,]+,'([A-Z0-9]{6}\d{10,})'", onclick)
         if vh_match:
             return vh_match.group(1)
     return ""
